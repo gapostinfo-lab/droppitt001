@@ -14,8 +14,7 @@ interface DashboardProps {
   onNavigateProfile: () => void;
 
   // NEW: send bookingDraft + amountCents to App.tsx so it opens CheckoutPage
-  onGoToCheckout: (bookingDraft: any, amountCents: number) => void;
-}
+onGoToCheckout: (bookingDraft, amountCents) => void;}
 
 const isValidTransition = (current: BookingStatus, next: BookingStatus, role: string): boolean => {
   if (role === 'admin') return true;
