@@ -2,44 +2,17 @@ import React, { useMemo, useState } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { Dashboard } from './components/Dashboard';
 import { ProfilePage } from './components/ProfilePage';
-import CheckoutPage from './components/CheckoutPage';
+import { CheckoutPage } from './components/CheckoutPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
-
-type View = 'dashboard' | 'profile' | 'checkout';
+import { Booking } from './types';
 
 const AppContent: React.FC = () => {
   const { user, loading, logout, updateUser } = useAuth();
 
-  const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'profile' | 'checkout'>('dashboard');
 
-  // Holds the draft booking until payment succeeds
-  const [pendingBooking, setPendingBooking] = useState<any | null>(null);
+  const [checkoutDraft, setCheckoutDraft] = useState<Booking | null>(null);
   const [checkoutAmountCents, setCheckoutAmountCents] = useState<number>(0);
-
-  const isReadyForCheckout = useMemo(() => {
-    return !!pendingBooking && checkoutAmountCents > 0;
-  }, [pendingBooking, checkoutAmountCents]);
-
-  const startCheckoutFromBooking = (bookingDraft: any, amountCents: number) => {
-    setPendingBooking(bookingDraft);
-    setCheckoutAmountCents(amountCents);
-    setCurrentView('checkout');
-  };
-
-  const finalizeBookingAfterPayment = (paidBooking: any) => {
-    // Save into the same “DB” your Dashboard reads
-    const saved = localStorage.getItem('droppit_bookings_db');
-    const existing = saved ? JSON.parse(saved) : [];
-
-    localStorage.setItem('droppit_bookings_db', JSON.stringify([paidBooking, ...existing]));
-
-    // Clear pending state
-    setPendingBooking(null);
-    setCheckoutAmountCents(0);
-
-    // Go back to dashboard (your Dashboard already has a Tracking tab)
-    setCurrentView('dashboard');
-  };
 
   if (loading) {
     return (
@@ -60,30 +33,50 @@ const AppContent: React.FC = () => {
     );
   }
 
+  const startCheckout = (bookingDraft: Booking, amountCents: number) => {
+    setCheckoutDraft(bookingDraft);
+    setCheckoutAmountCents(amountCents);
+    setCurrentView('checkout');
+  };
+
+  const onPaymentSuccess = () => {
+    if (!checkoutDraft) return;
+
+    // Move booking into your DB only after payment success
+    const saved = localStorage.getItem('droppit_bookings_db');
+    const prev: Booking[] = saved ? JSON.parse(saved) : [];
+    localStorage.setItem('droppit_bookings_db', JSON.stringify([checkoutDraft, ...prev]));
+
+    setCheckoutDraft(null);
+    setCheckoutAmountCents(0);
+    setCurrentView('dashboard');
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      {currentView === 'checkout' ? (
-        <CheckoutPage
-          bookingDraft={pendingBooking}
-          amountCents={checkoutAmountCents}
-          onBack={() => setCurrentView('dashboard')}
-          onPaymentSuccess={finalizeBookingAfterPayment}
-          disabled={!isReadyForCheckout}
-        />
-      ) : currentView === 'dashboard' ? (
+      {currentView === 'dashboard' ? (
         <Dashboard
           user={user}
           onLogout={logout}
           onNavigateProfile={() => setCurrentView('profile')}
-          onGoToCheckout={startCheckoutFromBooking}
+          onGoToCheckout={startCheckout}
         />
-      ) : (
+      ) : currentView === 'profile' ? (
         <ProfilePage
           user={user}
           onBack={() => setCurrentView('dashboard')}
           onUpdate={updateUser}
           onLogout={logout}
         />
+      ) : (
+        checkoutDraft && (
+          <CheckoutPage
+            bookingDraft={checkoutDraft}
+            amountCents={checkoutAmountCents}
+            onCancel={() => setCurrentView('dashboard')}
+            onPaymentSuccess={onPaymentSuccess}
+          />
+        )
       )}
     </div>
   );
