@@ -1,247 +1,210 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
+import React, { useEffect, useMemo, useState } from "react";
+import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
   PaymentElement,
   useElements,
   useStripe,
-} from '@stripe/react-stripe-js';
+} from "@stripe/react-stripe-js";
+import { ChevronLeft, Loader2, ShieldCheck } from "lucide-react";
+import type { Booking } from "../types";
 
-type CheckoutPageProps = {
-  bookingDraft: any | null;
+type Props = {
+  bookingDraft: Booking;
   amountCents: number;
   onBack: () => void;
-  onPaymentSuccess: (paidBooking: any) => void;
-  disabled?: boolean;
+  onPaid: (paidBooking: Booking) => void;
 };
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
-async function createPaymentIntent(amountCents: number, metadata?: Record<string, string>) {
-  const res = await fetch('/api/create-payment-intent', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amountCents, metadata }),
-  });
+export const CheckoutPage: React.FC<Props> = ({
+  bookingDraft,
+  amountCents,
+  onBack,
+  onPaid,
+}) => {
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(txt || 'Failed to create payment intent');
-  }
+  const dollars = useMemo(() => (amountCents / 100).toFixed(2), [amountCents]);
 
-  return res.json() as Promise<{ clientSecret: string }>;
-}
+  useEffect(() => {
+    let mounted = true;
 
-const CheckoutInner: React.FC<{
-  bookingDraft: any;
-  amountCents: number;
-  onBack: () => void;
-  onPaymentSuccess: (paidBooking: any) => void;
-}> = ({ bookingDraft, amountCents, onBack, onPaymentSuccess }) => {
-  const stripe = useStripe();
-  const elements = useElements();
+    async function createIntent() {
+      try {
+        setLoading(true);
+        setErr(null);
 
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+        const resp = await fetch("/api/create-payment-intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: amountCents,
+            currency: "usd",
+            metadata: {
+              booking_id: bookingDraft.id,
+              carrier: bookingDraft.carrier,
+              customer_id: bookingDraft.customer_id,
+            },
+          }),
+        });
 
-  const handlePay = async () => {
-    setErrorMsg(null);
-    if (!stripe || !elements) return;
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json?.error || "Failed to create payment");
 
-    setSubmitting(true);
-
-    try {
-      const { error, paymentIntent } = await stripe.confirmPayment({
-        elements,
-        confirmParams: {
-          // We are not redirecting; we’ll stay on-page.
-          return_url: window.location.href,
-        },
-        redirect: 'if_required',
-      });
-
-      if (error) {
-        setErrorMsg(error.message || 'Payment failed.');
-        setSubmitting(false);
-        return;
+        if (mounted) setClientSecret(json.clientSecret);
+      } catch (e: any) {
+        if (mounted) setErr(e?.message || "Payment setup failed");
+      } finally {
+        if (mounted) setLoading(false);
       }
-
-      if (!paymentIntent || paymentIntent.status !== 'succeeded') {
-        setErrorMsg('Payment did not succeed. Please try again.');
-        setSubmitting(false);
-        return;
-      }
-
-      // Build the final booking we will store
-      const paidBooking = {
-        ...bookingDraft,
-        paid: true,
-        paid_at: new Date().toISOString(),
-        payment_intent_id: paymentIntent.id,
-        price_total: (amountCents / 100),
-        status: bookingDraft.status || 'booked',
-        updated_at: new Date().toISOString(),
-      };
-
-      onPaymentSuccess(paidBooking);
-    } catch (e: any) {
-      setErrorMsg(e?.message || 'Payment error.');
-    } finally {
-      setSubmitting(false);
     }
-  };
+
+    createIntent();
+    return () => {
+      mounted = false;
+    };
+  }, [amountCents, bookingDraft]);
 
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-slate-950 text-slate-100 p-6 pb-24">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-black uppercase italic tracking-tighter">
-          Checkout
-        </h1>
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-inter">
+      <div className="p-6 flex items-center justify-between border-b border-slate-900/50 sticky top-0 z-40 backdrop-blur">
         <button
           onClick={onBack}
-          className="text-slate-400 hover:text-lime-400 font-bold"
+          className="p-2 text-slate-500 hover:text-white transition-colors"
         >
-          Back
+          <ChevronLeft />
         </button>
+        <div className="text-center">
+          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest italic">
+            Secure Checkout
+          </p>
+          <p className="text-white font-black uppercase italic tracking-tighter">
+            ${dollars}
+          </p>
+        </div>
+        <div className="w-10" />
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] uppercase tracking-widest text-slate-500 font-black italic">
-            Total
-          </span>
-          <span className="text-white font-black italic">
-            ${(amountCents / 100).toFixed(2)}
-          </span>
+      <div className="max-w-md mx-auto p-6 space-y-6">
+        <div className="bg-slate-900 border border-lime-400/20 rounded-3xl p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldCheck className="text-lime-400" size={18} />
+            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest italic">
+              Booking Summary
+            </p>
+          </div>
+          <p className="text-white font-black italic uppercase tracking-tighter">
+            {bookingDraft.carrier} • {bookingDraft.dropoff_name}
+          </p>
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest italic mt-1">
+            Pickup: {bookingDraft.pickup_address}
+          </p>
         </div>
 
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
-          <PaymentElement />
-        </div>
-
-        {errorMsg && (
-          <div className="text-red-400 text-xs font-bold">{errorMsg}</div>
+        {loading && (
+          <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-10 flex items-center justify-center gap-3">
+            <Loader2 className="animate-spin text-lime-400" />
+            <span className="text-slate-400 font-bold">Preparing payment…</span>
+          </div>
         )}
 
-        <button
-          disabled={!stripe || !elements || submitting}
-          onClick={handlePay}
-          className="w-full bg-lime-400 text-slate-950 font-black py-4 rounded-2xl uppercase italic tracking-tighter disabled:opacity-30 active:scale-95 transition-all"
-        >
-          {submitting ? 'Processing…' : 'Pay Now'}
-        </button>
+        {err && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-3xl p-5">
+            <p className="text-red-400 font-black uppercase text-[10px] tracking-widest italic">
+              Payment error
+            </p>
+            <p className="text-red-200 text-sm mt-2">{err}</p>
+          </div>
+        )}
 
-        <p className="text-[10px] text-slate-500 leading-snug">
-          Your card is processed securely by Stripe.
-        </p>
+        {clientSecret && (
+          <Elements
+            stripe={stripePromise}
+            options={{
+              clientSecret,
+              appearance: { theme: "night" },
+            }}
+          >
+            <CheckoutForm
+              amountLabel={dollars}
+              bookingDraft={bookingDraft}
+              onPaid={onPaid}
+            />
+          </Elements>
+        )}
       </div>
     </div>
   );
 };
 
-const CheckoutPage: React.FC<CheckoutPageProps> = ({
-  bookingDraft,
-  amountCents,
-  onBack,
-  onPaymentSuccess,
-  disabled,
-}) => {
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+const CheckoutForm: React.FC<{
+  amountLabel: string;
+  bookingDraft: Booking;
+  onPaid: (paidBooking: Booking) => void;
+}> = ({ amountLabel, bookingDraft, onPaid }) => {
+  const stripe = useStripe();
+  const elements = useElements();
 
-  const canLoad = useMemo(() => {
-    return !disabled && !!bookingDraft && amountCents > 0;
-  }, [disabled, bookingDraft, amountCents]);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
+  async function pay() {
+    try {
+      setSubmitting(true);
+      setMessage(null);
 
-    const run = async () => {
-      try {
-        setErrorMsg(null);
-        setClientSecret(null);
+      if (!stripe || !elements) return;
 
-        if (!canLoad) return;
+      const result = await stripe.confirmPayment({
+        elements,
+        redirect: "if_required",
+      });
 
-        const metadata: Record<string, string> = {
-          booking_id: bookingDraft?.id || '',
-          customer_id: bookingDraft?.customer_id || '',
-        };
-
-        const data = await createPaymentIntent(amountCents, metadata);
-        if (!mounted) return;
-
-        setClientSecret(data.clientSecret);
-      } catch (e: any) {
-        if (!mounted) return;
-        setErrorMsg(e?.message || 'Unable to start checkout.');
+      if (result.error) {
+        setMessage(result.error.message || "Payment failed");
+        return;
       }
-    };
 
-    run();
-    return () => {
-      mounted = false;
-    };
-  }, [canLoad, amountCents, bookingDraft]);
+      if (result.paymentIntent?.status === "succeeded") {
+        onPaid({
+          ...bookingDraft,
+          paid: true as any, // harmless if your Booking type doesn't include it
+          updated_at: new Date().toISOString(),
+        });
+        return;
+      }
 
-  if (!canLoad) {
-    return (
-      <div className="max-w-md mx-auto min-h-screen bg-slate-950 text-slate-100 p-6">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-          <p className="text-slate-400 text-sm">
-            Checkout is not ready. Go back and try again.
-          </p>
-          <button
-            onClick={onBack}
-            className="mt-4 w-full bg-slate-800 text-white font-black py-3 rounded-2xl uppercase italic"
-          >
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (errorMsg) {
-    return (
-      <div className="max-w-md mx-auto min-h-screen bg-slate-950 text-slate-100 p-6">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-          <p className="text-red-400 text-sm font-bold">{errorMsg}</p>
-          <button
-            onClick={onBack}
-            className="mt-4 w-full bg-slate-800 text-white font-black py-3 rounded-2xl uppercase italic"
-          >
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!clientSecret) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-lime-400"></div>
-      </div>
-    );
+      setMessage(`Payment status: ${result.paymentIntent?.status || "unknown"}`);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <Elements
-      stripe={stripePromise}
-      options={{
-        clientSecret,
-        appearance: { theme: 'night' },
-      }}
-    >
-      <CheckoutInner
-        bookingDraft={bookingDraft}
-        amountCents={amountCents}
-        onBack={onBack}
-        onPaymentSuccess={onPaymentSuccess}
-      />
-    </Elements>
+    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
+      <PaymentElement />
+
+      {message && (
+        <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-4">
+          <p className="text-orange-200 text-sm">{message}</p>
+        </div>
+      )}
+
+      <button
+        onClick={pay}
+        disabled={!stripe || !elements || submitting}
+        className="w-full bg-lime-400 text-slate-950 font-black py-5 rounded-2xl uppercase italic tracking-tighter disabled:opacity-30 active:scale-95 transition-all"
+      >
+        {submitting ? "Processing…" : `Pay $${amountLabel}`}
+      </button>
+
+      <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest italic text-center">
+        Live card form • encrypted by Stripe
+      </p>
+    </div>
   );
 };
-
-export default CheckoutPage;
