@@ -1,18 +1,37 @@
 import React, { useState, useRef } from 'react';
 import {
-  X, ChevronRight, ArrowLeft, Store,
-  ShoppingBag, Box, Loader2, Truck, Building2, QrCode, FileText, Upload, CheckCircle2,
-  Check, Shield, Sparkles, MessageSquare, MapPin, UserCheck, Clock
+  X,
+  ChevronRight,
+  ArrowLeft,
+  Store,
+  ShoppingBag,
+  Box,
+  Loader2,
+  Truck,
+  Building2,
+  QrCode,
+  FileText,
+  Upload,
+  CheckCircle2,
+  Check,
+  Shield,
+  Sparkles,
+  MessageSquare,
+  MapPin,
+  UserCheck,
+  Clock
 } from 'lucide-react';
-import { Carrier, PackageSize, PACKAGE_SIZES, Booking, User } from '../types';
+
+import type { Carrier, PackageSize, Booking, User } from '../types';
+import { PACKAGE_SIZES } from '../types';
 import { getSizingRecommendation } from '../services/gemini';
 
 interface BookingWizardProps {
   currentUser: User;
   onCancel: () => void;
 
-  // NEW: instead of "onComplete", we go to checkout
-  onGoToCheckout: (bookingDraft: any, amountCents: number) => void;
+  // ✅ send draft to checkout (NOT saved yet)
+  onGoToCheckout: (bookingDraft: Booking, amountCents: number) => void;
 }
 
 const CARRIERS: { id: Carrier; color: string; logo: string; phone: string; address: string; hours: string }[] = [
@@ -22,7 +41,14 @@ const CARRIERS: { id: Carrier; color: string; logo: string; phone: string; addre
   { id: 'Amazon', color: 'bg-slate-100', logo: '🛒', phone: '1-888-280-4331', address: 'Amazon Hub Fulfillment', hours: '9:00 AM - 9:00 PM' },
 ];
 
-const AMAZON_HUBS = [
+type AmazonHub = {
+  id: string;
+  name: string;
+  address: string;
+  icon: React.ReactNode;
+};
+
+const AMAZON_HUBS: AmazonHub[] = [
   { id: 'whole_foods', name: 'Whole Foods Market', address: '1001 Amazon Way, Hub City', icon: <ShoppingBag size={20} /> },
   { id: 'kohls', name: "Kohl's Return Center", address: '202 Retail Rd, Retail Way', icon: <Store size={20} /> },
   { id: 'amazon_locker', name: 'Amazon Hub Locker', address: '7-Eleven, 456 Main St', icon: <Box size={20} /> },
@@ -32,55 +58,47 @@ const AMAZON_HUBS = [
 ];
 
 export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCancel, onGoToCheckout }) => {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<number>(1);
+
   const [carrier, setCarrier] = useState<Carrier | null>(null);
-  const [hub, setHub] = useState<typeof AMAZON_HUBS[0] | null>(null);
+  const [hub, setHub] = useState<AmazonHub | null>(null);
   const [size, setSize] = useState<PackageSize | null>(null);
 
   const [returnType, setReturnType] = useState<'qr' | 'label'>('qr');
   const [artifactName, setArtifactName] = useState<string | null>(null);
 
-  const [pickupAddress, setPickupAddress] = useState(currentUser.address?.street || '');
-  const [pickupName, setPickupName] = useState(currentUser.name);
-  const [pickupPhone, setPickupPhone] = useState(currentUser.phone);
+  const [pickupAddress, setPickupAddress] = useState<string>(currentUser.address?.street || '');
+  const [pickupName] = useState<string>(currentUser.name);
+  const [pickupPhone] = useState<string>(currentUser.phone);
 
-  const [dropoffName, setDropoffName] = useState('');
-  const [dropoffAddress, setDropoffAddress] = useState('');
+  const [dropoffName, setDropoffName] = useState<string>('');
+  const [dropoffAddress, setDropoffAddress] = useState<string>('');
 
-  const [isBoxed, setIsBoxed] = useState(false);
-  const [isCodeReady, setIsCodeReady] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isBoxed, setIsBoxed] = useState<boolean>(false);
+  const [isCodeReady, setIsCodeReady] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAmazon = carrier === 'Amazon';
   const totalSteps = isAmazon ? 5 : 4;
 
-  const handleNext = () => {
-    if (step === 1 && carrier && carrier !== 'Amazon') {
-      const c = CARRIERS.find(x => x.id === carrier);
-      if (c) {
-        setDropoffName(`${c.id} Drop-off`);
-        setDropoffAddress(c.address);
-      }
-    }
-    if (step === 2 && isAmazon && hub) {
-      setDropoffName(hub.name);
-      setDropoffAddress(hub.address);
-    }
-    setStep(step + 1);
-  };
-
-  const handleBack = () => setStep(step - 1);
+  const handleBack = () => setStep((s) => Math.max(1, s - 1));
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) setArtifactName(file.name);
   };
 
-  // IMPORTANT: This does NOT "book" anymore — it sends draft to checkout
+  // ✅ safe UUID (older browsers)
+  const makeId = () =>
+    (globalThis.crypto && 'randomUUID' in globalThis.crypto)
+      ? (globalThis.crypto as Crypto).randomUUID()
+      : `bk_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+  // ✅ IMPORTANT: This does NOT book — sends draft to checkout
   const handleSubmitGoToPayment = async () => {
-    const hasReturnAsset = (returnType === 'qr' || returnType === 'label') && artifactName;
+    const hasReturnAsset = !!artifactName;
 
     if (!hasReturnAsset) {
       alert('Please upload your QR code or Label to continue.');
@@ -94,11 +112,14 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
       alert('Please enter your pickup address.');
       return;
     }
+    if (!dropoffName || !dropoffAddress) {
+      alert('Dropoff location is missing. Please go back and select a hub.');
+      return;
+    }
 
     setIsProcessing(true);
 
-    // Create a draft booking (NOT saved yet)
-    const deliveryId = crypto.randomUUID();
+    const deliveryId = makeId();
     const startTime = new Date().toISOString();
 
     const bucket = returnType === 'qr' ? 'amazon_qr' : 'amazon_labels';
@@ -108,31 +129,53 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
       id: deliveryId,
       customer_id: currentUser.id,
       courier_id: null,
-      status: 'booked', // will become "active" after payment in your checkout flow
+      status: 'booked',
       return_type: returnType,
       dropoff_name: dropoffName,
       dropoff_address: dropoffAddress,
       qr_url: returnType === 'qr' ? storagePath : undefined,
       label_url: returnType === 'label' ? storagePath : undefined,
-      carrier: carrier,
+      carrier,
       packageSize: size.id,
       pickup_name: pickupName,
       pickup_phone: pickupPhone,
       pickup_address: pickupAddress,
       price_total: Number(size.price),
       created_at: startTime,
-      updated_at: startTime
+      updated_at: startTime,
     };
 
-    // smooth transition feel
-    await new Promise(r => setTimeout(r, 900));
+    await new Promise((r) => setTimeout(r, 900));
     setIsProcessing(false);
 
-    // Stripe expects cents
     const amountCents = Math.round(Number(size.price) * 100);
-
-    // Send to checkout page
     onGoToCheckout(bookingDraft, amountCents);
+  };
+
+  // ✅ FIX: When selecting carrier/hub, set dropoff immediately BEFORE moving steps
+  const selectCarrier = (c: Carrier) => {
+    setCarrier(c);
+
+    if (c !== 'Amazon') {
+      const carrierObj = CARRIERS.find((x) => x.id === c);
+      setDropoffName(`${c} Drop-off`);
+      setDropoffAddress(carrierObj?.address || '');
+      setHub(null);
+      setStep(2); // next screen is SizeSelection
+      return;
+    }
+
+    // Amazon path
+    setDropoffName('');
+    setDropoffAddress('');
+    setStep(2); // next screen is Amazon hubs
+  };
+
+  const selectAmazonHub = (h: AmazonHub) => {
+    setHub(h);
+    setDropoffName(h.name);
+    setDropoffAddress(h.address);
+    setStep(3); // next is size selection
   };
 
   return (
@@ -163,6 +206,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
             <button onClick={step === 1 ? onCancel : handleBack} className="p-2 text-slate-500 hover:text-white transition-colors">
               {step === 1 ? <X /> : <ArrowLeft />}
             </button>
+
             <div className="flex gap-2">
               {Array.from({ length: totalSteps }).map((_, i) => (
                 <div
@@ -179,6 +223,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
           </div>
 
           <div className="px-8 flex-1 flex flex-col pt-6 pb-32 space-y-8 overflow-y-auto">
+            {/* STEP 1: Carrier */}
             {step === 1 && (
               <div className="space-y-10 animate-in slide-in-from-right duration-300">
                 <div className="space-y-2">
@@ -187,15 +232,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
                   </h2>
                   <p className="text-slate-500 text-xs font-bold uppercase tracking-widest italic">Where are we dropping this off?</p>
                 </div>
+
                 <div className="grid grid-cols-2 gap-4">
-                  {CARRIERS.map(c => (
+                  {CARRIERS.map((c) => (
                     <button
                       key={c.id}
-                      onClick={() => {
-                        setCarrier(c.id);
-                        // move to next step immediately
-                        setTimeout(() => handleNext(), 0);
-                      }}
+                      onClick={() => selectCarrier(c.id)}
                       className="p-8 rounded-[2.5rem] border-2 border-slate-800 bg-slate-900/40 hover:border-lime-400 transition-all flex flex-col items-center gap-3 group active:scale-95"
                     >
                       <span className="text-5xl group-hover:scale-110 transition-transform duration-500">{c.logo}</span>
@@ -206,6 +248,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
               </div>
             )}
 
+            {/* STEP 2: Amazon hubs OR size selection */}
             {step === 2 && (
               <div className="space-y-10 animate-in slide-in-from-right duration-300">
                 {isAmazon ? (
@@ -216,14 +259,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
                       </h2>
                       <p className="text-slate-500 text-xs font-bold uppercase tracking-widest italic">Find your nearest return point</p>
                     </div>
+
                     <div className="space-y-4">
-                      {AMAZON_HUBS.map(h => (
+                      {AMAZON_HUBS.map((h) => (
                         <button
                           key={h.id}
-                          onClick={() => {
-                            setHub(h);
-                            setTimeout(() => handleNext(), 0);
-                          }}
+                          onClick={() => selectAmazonHub(h)}
                           className="w-full p-6 rounded-[2.5rem] border-2 border-slate-800 bg-slate-900/40 hover:border-lime-400 flex items-center justify-between group transition-all active:scale-[0.98]"
                         >
                           <div className="flex items-center gap-4">
@@ -243,18 +284,19 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
                     </div>
                   </>
                 ) : (
-                  <SizeSelection size={size} onSelect={(s: any) => { setSize(s); handleNext(); }} />
+                  <SizeSelection onSelect={(s: PackageSize) => { setSize(s); setStep(3); }} />
                 )}
               </div>
             )}
 
+            {/* STEP 3: Amazon size OR details */}
             {step === 3 && (
               <div className="space-y-10 animate-in slide-in-from-right duration-300">
                 {isAmazon ? (
-                  <SizeSelection size={size} onSelect={(s: any) => { setSize(s); handleNext(); }} />
+                  <SizeSelection onSelect={(s: PackageSize) => { setSize(s); setStep(4); }} />
                 ) : (
                   <Details
-                    onNext={handleNext}
+                    onNext={() => setStep(4)}
                     returnType={returnType}
                     setReturnType={setReturnType}
                     artifactName={artifactName}
@@ -271,11 +313,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
               </div>
             )}
 
+            {/* STEP 4: Amazon details OR final brief */}
             {step === 4 && (
               <div className="space-y-10 animate-in slide-in-from-right duration-300">
                 {isAmazon ? (
                   <Details
-                    onNext={handleNext}
+                    onNext={() => setStep(5)}
                     returnType={returnType}
                     setReturnType={setReturnType}
                     artifactName={artifactName}
@@ -300,6 +343,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
               </div>
             )}
 
+            {/* STEP 5: Amazon final brief */}
             {step === 5 && isAmazon && (
               <div className="animate-in slide-in-from-right duration-300">
                 <FinalBrief
@@ -319,7 +363,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({ currentUser, onCan
   );
 };
 
-const SizeSelection = ({ size, onSelect }: any) => {
+const SizeSelection: React.FC<{ onSelect: (s: PackageSize) => void }> = ({ onSelect }) => {
   const [showAi, setShowAi] = useState(false);
   const [itemDesc, setItemDesc] = useState('');
   const [recommendation, setRecommendation] = useState('');
@@ -333,6 +377,8 @@ const SizeSelection = ({ size, onSelect }: any) => {
     setIsAsking(false);
   };
 
+  const matches = (name: string) => recommendation.toLowerCase().includes(name.toLowerCase());
+
   return (
     <div className="space-y-10">
       <div className="flex justify-between items-end">
@@ -342,6 +388,7 @@ const SizeSelection = ({ size, onSelect }: any) => {
           </h2>
           <p className="text-slate-500 text-xs font-bold uppercase tracking-widest italic">Pick dimensions that fit</p>
         </div>
+
         <button
           onClick={() => setShowAi(!showAi)}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-full border transition-all duration-500 ${
@@ -362,18 +409,21 @@ const SizeSelection = ({ size, onSelect }: any) => {
           <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
             <Sparkles size={100} className="text-lime-400" />
           </div>
+
           <div className="flex items-center gap-2 text-lime-400 relative z-10">
             <MessageSquare size={16} />
             <span className="text-[10px] font-black uppercase tracking-widest italic">Tell us what you're shipping...</span>
           </div>
+
           <div className="relative z-10">
             <textarea
               placeholder="e.g. A pair of sneakers, two t-shirts and a small coffee maker..."
               className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm font-bold text-white placeholder:text-slate-800 outline-none focus:border-lime-400/50 transition-all resize-none h-32 shadow-inner"
               value={itemDesc}
-              onChange={e => setItemDesc(e.target.value)}
+              onChange={(e) => setItemDesc(e.target.value)}
             />
           </div>
+
           <button
             onClick={askAi}
             disabled={isAsking || !itemDesc.trim()}
@@ -381,36 +431,41 @@ const SizeSelection = ({ size, onSelect }: any) => {
           >
             {isAsking ? 'Calculating Fit...' : 'Get AI Recommendation'}
           </button>
+
           {recommendation && (
             <div className="p-5 bg-slate-950 rounded-2xl border border-lime-400/20 animate-in slide-in-from-top-4 duration-500 relative z-10">
-              <p className="text-[11px] text-lime-400 leading-relaxed font-black italic uppercase tracking-tight">{recommendation}</p>
+              <p className="text-[11px] text-lime-400 leading-relaxed font-black italic uppercase tracking-tight">
+                {recommendation}
+              </p>
             </div>
           )}
         </div>
       )}
 
       <div className="space-y-4">
-        {PACKAGE_SIZES.map((s: any) => (
+        {PACKAGE_SIZES.map((s) => (
           <button
             key={s.id}
             onClick={() => onSelect(s)}
             className={`w-full p-8 rounded-[2.5rem] border-2 bg-slate-900/40 hover:border-lime-400 text-left flex items-center justify-between transition-all group shadow-xl relative overflow-hidden ${
-              recommendation.toLowerCase().includes(s.name.toLowerCase())
+              recommendation && matches(s.name)
                 ? 'border-lime-400 bg-lime-400/5 ring-4 ring-lime-400/10 ring-offset-4 ring-offset-slate-950'
                 : 'border-slate-800'
             }`}
           >
-            {recommendation.toLowerCase().includes(s.name.toLowerCase()) && (
+            {recommendation && matches(s.name) && (
               <div className="absolute top-0 right-0 bg-lime-400 px-4 py-1.5 rounded-bl-2xl shadow-lg z-10">
                 <span className="text-[8px] font-black uppercase italic text-slate-950 tracking-widest">AI Best Match</span>
               </div>
             )}
+
             <div>
               <h4 className="font-black text-2xl uppercase italic text-white leading-none tracking-tighter">{s.name}</h4>
               <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mt-2 italic flex items-center gap-2">
                 <Box size={10} /> {s.dimensions}
               </p>
             </div>
+
             <div className="text-right">
               <span className="font-black text-lime-400 italic text-2xl group-hover:scale-110 transition-transform leading-none tracking-tighter block">
                 ${s.price}
@@ -423,17 +478,21 @@ const SizeSelection = ({ size, onSelect }: any) => {
   );
 };
 
-const Details = ({
-  returnType, setReturnType,
+const Details: React.FC<any> = ({
+  returnType,
+  setReturnType,
   artifactName,
-  pickupAddress, setPickupAddress,
-  isBoxed, setIsBoxed,
-  isCodeReady, setIsCodeReady,
+  pickupAddress,
+  setPickupAddress,
+  isBoxed,
+  setIsBoxed,
+  isCodeReady,
+  setIsCodeReady,
   fileInputRef,
   handleFileUpload,
   onNext
-}: any) => {
-  const canContinue = pickupAddress && artifactName && isBoxed && isCodeReady;
+}) => {
+  const canContinue = !!pickupAddress?.trim() && !!artifactName && isBoxed && isCodeReady;
 
   return (
     <div className="space-y-8 animate-in slide-in-from-right duration-500">
@@ -487,6 +546,7 @@ const Details = ({
           <div className={`p-5 rounded-3xl transition-all ${artifactName ? 'bg-lime-400 text-slate-950' : 'bg-slate-900 text-slate-700'}`}>
             {artifactName ? <CheckCircle2 size={40} /> : <Upload size={40} />}
           </div>
+
           <div className="text-center">
             <span className={`text-[11px] font-black uppercase tracking-[0.2em] italic block ${artifactName ? 'text-lime-400' : 'text-slate-500'}`}>
               {artifactName ? `File: ${artifactName}` : 'Upload your return asset'}
@@ -503,7 +563,7 @@ const Details = ({
               placeholder="Your street address & unit..."
               className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-5 pl-14 text-sm font-bold text-white italic focus:border-lime-400 outline-none transition-all shadow-inner placeholder:text-slate-800"
               value={pickupAddress}
-              onChange={e => setPickupAddress(e.target.value)}
+              onChange={(e) => setPickupAddress(e.target.value)}
             />
           </div>
         </div>
@@ -550,7 +610,7 @@ const Details = ({
   );
 };
 
-const FinalBrief = ({ carrier, hub, size, address, artifactName, onSubmit }: any) => (
+const FinalBrief: React.FC<any> = ({ carrier, hub, size, address, artifactName, onSubmit }) => (
   <div className="space-y-10 flex-1 flex flex-col font-inter animate-in slide-in-from-right duration-500">
     <div className="space-y-2">
       <h2 className="text-5xl font-black italic uppercase text-white leading-none tracking-tighter">
@@ -578,6 +638,7 @@ const FinalBrief = ({ carrier, hub, size, address, artifactName, onSubmit }: any
             </span>
           </div>
         </div>
+
         <span className="text-slate-950 font-black text-4xl italic tracking-tighter leading-none">
           ${size?.price}
         </span>
@@ -641,6 +702,7 @@ const FinalBrief = ({ carrier, hub, size, address, artifactName, onSubmit }: any
           <ChevronRight size={24} className="group-hover:translate-x-2 transition-transform" />
         </div>
       </button>
+
       <div className="flex items-center justify-center gap-2 opacity-40">
         <Shield size={10} className="text-lime-400" />
         <p className="text-[7px] text-slate-500 font-black uppercase tracking-[0.4em] italic">
