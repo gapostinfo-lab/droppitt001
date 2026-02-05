@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -13,7 +13,7 @@
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#a3e635" />
 
-    <!-- iOS Add-to-Home-Screen -->
+    <!-- iOS Add to Home Screen -->
     <link rel="apple-touch-icon" href="/icon-1024.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -30,16 +30,11 @@
       rel="stylesheet"
     />
 
-    <!-- ✅ FAST: Tailwind CDN (no build files needed) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Optional: your body defaults -->
-    <style>
-      body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    </style>
+    <!-- App CSS -->
+    <link rel="stylesheet" href="/index.css" />
   </head>
 
-  <body class="bg-slate-950 text-slate-100">
+  <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
