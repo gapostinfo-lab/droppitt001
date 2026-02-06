@@ -6,17 +6,17 @@
     <title>Droppit | Package Concierge</title>
 
     <!-- PWA -->
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#a3e635" />
 
-    <!-- iOS Add-to-Home-Screen -->
-    <link rel="apple-touch-icon" href="/icon-1024.png" />
+    <!-- iOS Add to Home Screen -->
+    <link rel="apple-touch-icon" href="./icon-1024.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Droppit" />
 
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="/icon-512.png" />
+    <link rel="icon" type="image/png" href="./icon-512.png" />
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,12 +26,13 @@
       rel="stylesheet"
     />
 
-    <!-- Tailwind (CDN) -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Only keep this if app/index.css actually exists -->
+    <link rel="stylesheet" href="./index.css" />
   </head>
 
-  <body class="bg-slate-950 text-slate-100">
+  <body>
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <!-- Vite entry (this MUST match your real entry file) -->
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
