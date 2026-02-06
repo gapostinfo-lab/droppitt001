@@ -6,45 +6,23 @@
     <title>Droppit | Package Concierge</title>
 
     <!-- PWA -->
-    <link rel="manifest" href="./manifest.json" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#a3e635" />
 
     <!-- iOS Add to Home Screen -->
-    <link rel="apple-touch-icon" href="./icon-1024.png" />
+    <link rel="apple-touch-icon" href="/icon-1024.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Droppit" />
 
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="./icon-512.png" />
-
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-
-    <!-- ✅ Tailwind (so styling works even if you don't have index.css) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Base styling (keeps your dark theme even before React loads) -->
-    <style>
-      html, body { height: 100%; }
-      body {
-        margin: 0;
-        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-        background: #020617; /* slate-950 */
-        color: #f8fafc;
-      }
-    </style>
+    <link rel="icon" type="image/png" href="/icon-512.png" />
   </head>
 
   <body>
     <div id="root"></div>
 
-    <!-- Entry -->
-    <script type="module" src="./index.tsx"></script>
+    <!-- Vite entry (keep this exactly) -->
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
