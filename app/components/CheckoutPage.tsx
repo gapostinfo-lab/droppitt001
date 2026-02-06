@@ -10,21 +10,7 @@ import {
 import { ArrowLeft, Shield, Loader2, CheckCircle2 } from "lucide-react";
 
 // OPTIONAL: if your project has these types, keep them.
-// If it doesn't, you can safely remove this import and the Booking type usage below.
 import type { Booking } from "../types";
-
-/**
- * ✅ This component is designed to work even if your "bookingDraft" + "amountCents"
- * are passed in different ways.
- *
- * It tries, in order:
- *  1) props.bookingDraft / props.amountCents
- *  2) sessionStorage keys:
- *       - "droppit_checkout_booking"
- *       - "droppit_checkout_amount_cents"
- *
- * So you do NOT need to change other files if you already store it in sessionStorage.
- */
 
 type CheckoutPageProps = {
   bookingDraft?: Booking | any;
@@ -55,11 +41,15 @@ const getApiBase = () => {
 };
 
 const apiBase = getApiBase();
-// ✅ Always build URLs like this (prevents Safari “pattern” error)
-const paymentIntentUrl = new URL("/api/create-payment-intent", apiBase).toString();
+const paymentIntentUrl = new URL(
+  "/api/create-payment-intent",
+  apiBase
+).toString();
 
 const publishableKey =
-  ((import.meta as any).env?.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined) ||
+  ((import.meta as any).env?.VITE_STRIPE_PUBLISHABLE_KEY as
+    | string
+    | undefined) ||
   ((import.meta as any).env?.VITE_STRIPE_PUBLIC_KEY as string | undefined) ||
   "";
 
@@ -93,6 +83,20 @@ function saveSession(key: string, value: any) {
   }
 }
 
+// ✅ Normalize + enforce Stripe minimum (50 cents)
+function normalizeAmountCents(input: unknown): number | null {
+  const n = Number(input);
+  if (!Number.isFinite(n)) return null;
+
+  // if someone passed a float, force integer cents
+  const cents = Math.round(n);
+
+  // Stripe minimum charge in USD is 50 cents
+  if (cents < 50) return 50;
+
+  return cents;
+}
+
 const CheckoutInner: React.FC<{
   bookingDraft: any;
   amountCents: number;
@@ -109,8 +113,10 @@ const CheckoutInner: React.FC<{
 
   const bookingTitle = useMemo(() => {
     const carrier = bookingDraft?.carrier || "Carrier";
-    const dropName = bookingDraft?.dropoff_name || bookingDraft?.dropoffName || "Drop-off";
-    const pickup = bookingDraft?.pickup_address || bookingDraft?.pickupAddress || "";
+    const dropName =
+      bookingDraft?.dropoff_name || bookingDraft?.dropoffName || "Drop-off";
+    const pickup =
+      bookingDraft?.pickup_address || bookingDraft?.pickupAddress || "";
     return {
       line1: `${carrier} • ${String(dropName).toUpperCase()}`,
       line2: pickup ? `Pickup: ${pickup}` : "",
@@ -128,7 +134,6 @@ const CheckoutInner: React.FC<{
     setIsSubmitting(true);
 
     try {
-      // Submit element validation (required)
       const { error: submitError } = await elements.submit();
       if (submitError) {
         setMessage(submitError.message || "Please check your payment details.");
@@ -136,18 +141,10 @@ const CheckoutInner: React.FC<{
         return;
       }
 
-      /**
-       * ✅ IMPORTANT:
-       * - If you're using LIVE Stripe keys, you must use a REAL card.
-       * - Test cards (4242...) will fail with “A processing error occurred.”
-       */
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         clientSecret,
-        confirmParams: {
-          // You can add a return_url if you want redirect flows:
-          // return_url: window.location.href,
-        },
+        confirmParams: {},
         redirect: "if_required",
       });
 
@@ -167,7 +164,6 @@ const CheckoutInner: React.FC<{
         setSuccess(true);
         setIsSubmitting(false);
 
-        // Optional callback for your app
         onSuccess?.({
           paymentIntentId: paymentIntent.id,
           bookingId: bookingDraft?.id,
@@ -175,7 +171,6 @@ const CheckoutInner: React.FC<{
         return;
       }
 
-      // handle other statuses
       if (paymentIntent.status === "processing") {
         setMessage("Payment is processing. Refresh in a moment to confirm.");
       } else if (paymentIntent.status === "requires_payment_method") {
@@ -242,7 +237,9 @@ const CheckoutInner: React.FC<{
             <div className="flex flex-col items-center justify-center py-10 space-y-4">
               <CheckCircle2 className="text-lime-400" size={44} />
               <div className="text-center">
-                <div className="text-2xl font-black italic tracking-tighter">Paid</div>
+                <div className="text-2xl font-black italic tracking-tighter">
+                  Paid
+                </div>
                 <div className="text-[10px] font-black uppercase tracking-[0.35em] text-slate-500 mt-1">
                   Payment confirmed
                 </div>
@@ -257,11 +254,7 @@ const CheckoutInner: React.FC<{
               </div>
 
               <div className="rounded-2xl bg-slate-950 border border-slate-800 p-4 shadow-inner">
-                <PaymentElement
-                  options={{
-                    layout: "tabs",
-                  }}
-                />
+                <PaymentElement options={{ layout: "tabs" }} />
               </div>
 
               {message ? (
@@ -296,13 +289,6 @@ const CheckoutInner: React.FC<{
                   Encrypted Secure Transaction
                 </p>
               </div>
-
-              <div className="mt-3 text-[10px] text-slate-500 leading-relaxed">
-                <span className="font-bold text-slate-300">Live vs Test:</span>{" "}
-                If you’re using <span className="font-bold">LIVE</span> Stripe keys,
-                <span className="font-bold"> test cards (4242…)</span> will fail with
-                “A processing error occurred.” Use a real card.
-              </div>
             </>
           )}
         </div>
@@ -316,27 +302,26 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = (props) => {
   const [loading, setLoading] = useState(true);
   const [fatal, setFatal] = useState<string | null>(null);
 
-  // ✅ Booking + Amount fallbacks (props -> sessionStorage)
   const bookingDraft = useMemo(() => {
-    return (
-      props.bookingDraft ??
-      safeReadSession<any>("droppit_checkout_booking") ??
-      null
-    );
+    return props.bookingDraft ?? safeReadSession<any>("droppit_checkout_booking") ?? null;
   }, [props.bookingDraft]);
 
-  const amountCents = useMemo(() => {
+  const rawAmountCents = useMemo(() => {
     const fromProps = props.amountCents;
     const fromSession = safeReadSession<number>("droppit_checkout_amount_cents");
-    return (typeof fromProps === "number" ? fromProps : fromSession) ?? null;
+    return typeof fromProps === "number" ? fromProps : fromSession;
   }, [props.amountCents]);
 
-  // Save props into session (so refresh won't lose it)
+  // ✅ normalized, integer cents, min 50
+  const amountCents = useMemo(() => {
+    return normalizeAmountCents(rawAmountCents);
+  }, [rawAmountCents]);
+
   useEffect(() => {
     if (bookingDraft) saveSession("droppit_checkout_booking", bookingDraft);
-    if (typeof amountCents === "number")
-      saveSession("droppit_checkout_amount_cents", amountCents);
-  }, [bookingDraft, amountCents]);
+    if (typeof rawAmountCents === "number")
+      saveSession("droppit_checkout_amount_cents", rawAmountCents);
+  }, [bookingDraft, rawAmountCents]);
 
   useEffect(() => {
     const run = async () => {
@@ -359,13 +344,21 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = (props) => {
           return;
         }
 
+        // if your app ever tries to charge less than 50 cents, block it clearly
+        if (amountCents < 50) {
+          setFatal("Amount is too low. Minimum charge is $0.50.");
+          setLoading(false);
+          return;
+        }
+
         setLoading(true);
 
         const res = await fetch(paymentIntentUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amountCents,
+            // ✅ IMPORTANT: send `amount` (NOT amountCents) because most APIs read req.body.amount
+            amount: amountCents,
             currency: "usd",
             bookingDraft,
           }),
@@ -428,7 +421,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = (props) => {
     );
   }
 
-  // Stripe Elements options
   const options = {
     clientSecret,
     appearance: {
@@ -438,7 +430,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = (props) => {
         colorBackground: "#020617",
         colorText: "#f8fafc",
         colorDanger: "#ef4444",
-        fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+        fontFamily:
+          "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
       },
     },
   };
